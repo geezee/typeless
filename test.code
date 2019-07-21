@@ -1,0 +1,20 @@
+true = lambda t (lambda f t);
+false = lambda t (lambda f f);
+not = lambda b ((b false) true);
+if = lambda b (lambda t (lambda f ((b t) f)));
+
+zero = lambda S (lambda z z);
+succ = lambda n (lambda S (lambda z ((n S) (S z))));
+zero? = lambda b ((b (lambda _ false)) true);
+
+0 = zero;
+1 = (succ 0);
+2 = (succ 1);
+3 = (succ 2);
+4 = (succ 3);
+5 = (succ 4);
+
+odd? = lambda b ((b not) false);
+even? = lambda b ((b not) true);
+
+main = ((((if (odd? 4)) (lambda _ (print true))) (lambda _ (print false))) 0)

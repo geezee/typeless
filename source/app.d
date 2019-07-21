@@ -15,7 +15,6 @@ struct Term {
 
 alias Env = Term*[string];
 
-
 bool isValue(Term* term) {
     return term.type == TType.VAR || term.type == TType.ABS;
 }
@@ -111,11 +110,11 @@ Term* eval(Term* term, Env env, void delegate(Term*, int) interfunc, int depth =
     interfunc(term, depth);
 
     if (term.type == TType.VAR) {
-        if (term.a == "write") {
-            return new Term(TType.VAR, "write");
+        if (term.a == "print" || term.a == "eval") {
+            return new Term(TType.VAR, term.a);
         } else if ((term.a in env) !is null) {
             return eval(env[term.a], env, interfunc, depth).dup;
-        } else return term;
+        } else assert(false, "Unbound variable " ~ term.a);
     } else if (term.type == TType.ABS) {
         return term;
     } else if (term.type == TType.APP) {
@@ -123,12 +122,16 @@ Term* eval(Term* term, Env env, void delegate(Term*, int) interfunc, int depth =
             term.t1.t1 = beta(term.t1.t1, term.t1.a, term.t2);
             return eval(term.t1.t1, env, interfunc, depth);
         } else {
-            if (term.t1.type == TType.VAR && term.t1.a == "write") {
-                writefln(".");
-                return eval(term.t2, env, interfunc, depth-1);
+            if (term.t1.type == TType.VAR) {
+                if (term.t1.a == "eval") {
+                    auto result = eval(term.t2, env, interfunc, depth-1);
+                    writefln("[eval] %s", result.toString);
+                    return result;
+                } else if (term.t1.a == "print") {
+                    writefln("[print] %s", term.t2.toString);
+                    return eval(term.t2, env, interfunc, depth-1);
+                }
             }
-            Term* old1 = term.t1;
-            Term* old2 = term.t2;
             term.t1 = eval(term.t1, env, interfunc, depth+1);
             term.t2 = eval(term.t2, env, interfunc, depth+1);
             return eval(term, env, interfunc, depth);
@@ -137,38 +140,40 @@ Term* eval(Term* term, Env env, void delegate(Term*, int) interfunc, int depth =
 }
 
 
-void main()
+void main(string[] argv)
 {
-    string input = `
-        true = lambda t lambda f t;
-        false = lambda t lambda f f;
+    import std.file : readText;
 
-        not = lambda b lambda t lambda f (b f t);
-        if = lambda b lambda t lambda f ((b t) f);
+    bool debugMode = false;
+    string source = "";
 
-        zero = lambda S (lambda z z);
-        succ = lambda n (lambda S (lambda z ((n S) (S z))));
-        one = (succ zero);
-        two = (succ one);
-        three = (succ two);
-        four = (succ three);
-        apply = lambda a lambda b (a f);
-        0 = lambda b b;
-        main = ((four write) 0)
-    `;
+    if (argv.length == 2 && argv[1] == "-d") debugMode = true;
+    if (argv.length == 3 && (argv[2] == "-d" || argv[1] == "-d")) debugMode = true;
+    if (argv.length == 2 && argv[1] != "-") source = argv[1];
+    if (argv.length == 3 && argv[1] != "-" && argv[1] != "-d") source = argv[1];
+    if (argv.length == 3 && argv[2] != "-" && argv[2] != "-d") source = argv[2];
+
+    if (argv.length < 2) {
+        writefln("Usage: ./typeless [-d] FILE");
+        return;
+    }
+
     Env env;
-    foreach (expr; input.split(";")) {
-        string[] tokens = expr.split("=");
-        if (tokens.length == 2)
-            env[tokens[0].strip] = parse(tokens[1]);
-    }
-    string[] exprs = input.split(`;`);
-    
-    foreach (k,v; env) {
-        writefln("%s = %s", k, toString(v));
-    }
 
-    env["main"].eval(env, (Term* step, int depth) {
-        // writefln(">%s %s", ">".repeat(depth).joiner(""), toString(step));
-    });
+    void delegate(Term*,int) debugCont = (Term* step, int depth) {
+        writefln(">%s %s", ">".repeat(depth).joiner(""), toString(step));
+    };
+    void delegate(Term*,int) normalCont = (Term* step, int depth) {};
+
+    if (source.length > 0) {
+        string input = source.readText;
+        foreach (expr; input.split(";")) {
+            string[] tokens = expr.split("=");
+            if (tokens.length == 2)
+                env[tokens[0].strip] = parse(tokens[1]);
+        }
+        string[] exprs = input.split(`;`);
+        
+        env["main"].eval(env, debugMode ? debugCont : normalCont).toString.writeln;
+    }
 }
