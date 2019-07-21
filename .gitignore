@@ -1,0 +1,15 @@
+.dub
+docs.json
+__dummy.html
+docs/
+/play2
+play2.so
+play2.dylib
+play2.dll
+play2.a
+play2.lib
+play2-test-*
+*.exe
+*.o
+*.obj
+*.lst
