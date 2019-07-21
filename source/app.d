@@ -153,11 +153,6 @@ void main(string[] argv)
     if (argv.length == 3 && argv[1] != "-" && argv[1] != "-d") source = argv[1];
     if (argv.length == 3 && argv[2] != "-" && argv[2] != "-d") source = argv[2];
 
-    if (argv.length < 2) {
-        writefln("Usage: ./typeless [-d] FILE");
-        return;
-    }
-
     Env env;
 
     void delegate(Term*,int) debugCont = (Term* step, int depth) {
@@ -175,5 +170,15 @@ void main(string[] argv)
         string[] exprs = input.split(`;`);
         
         env["main"].eval(env, debugMode ? debugCont : normalCont).toString.writeln;
+    } else {
+        string expr;
+        do {
+            write("> ");
+            expr = readln();
+            string[] tokens = expr.split("=");
+            if (tokens.length == 2) env[tokens[0].strip] = parse(tokens[1]);
+            else if (tokens.length == 1)
+                expr.parse.eval(env, debugMode ? debugCont : normalCont).toString.writeln;
+        } while(expr.length > 0);
     }
 }
