@@ -149,7 +149,7 @@ void main(string[] argv)
 
     if (argv.length == 2 && argv[1] == "-d") debugMode = true;
     if (argv.length == 3 && (argv[2] == "-d" || argv[1] == "-d")) debugMode = true;
-    if (argv.length == 2 && argv[1] != "-") source = argv[1];
+    if (argv.length == 2 && argv[1] != "-" && argv[1] != "-d") source = argv[1];
     if (argv.length == 3 && argv[1] != "-" && argv[1] != "-d") source = argv[1];
     if (argv.length == 3 && argv[2] != "-" && argv[2] != "-d") source = argv[2];
 
