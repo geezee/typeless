@@ -3,6 +3,10 @@ import std.array : replace, split;
 import std.string : strip;
 import std.range : repeat;
 import std.algorithm.iteration : joiner;
+import std.file : readText;
+import std.algorithm.searching : count;
+import std.ascii : isWhite;
+import std.conv : text;
 
 enum TType { VAR, APP, ABS };
 
@@ -39,7 +43,6 @@ Term* dup(Term* t) {
 
 
 Term* parse(string s) {
-    import std.ascii : isWhite;
     string[] tokens = s.replace("(", " ( ").replace(")", " ) ").split!isWhite;
     int depth = 0;
     Term*[] stack = [];
@@ -113,7 +116,7 @@ Term* eval(Term* term, Env env, void delegate(Term*, int) interfunc, int depth =
         if (term.a == "print" || term.a == "eval") {
             return new Term(TType.VAR, term.a);
         } else if ((term.a in env) !is null) {
-            return eval(env[term.a], env, interfunc, depth).dup;
+            return eval(env[term.a].dup, env, interfunc, depth);
         } else assert(false, "Unbound variable " ~ term.a);
     } else if (term.type == TType.ABS) {
         return term;
@@ -140,12 +143,10 @@ Term* eval(Term* term, Env env, void delegate(Term*, int) interfunc, int depth =
 }
 
 
-void main(string[] argv)
-{
-    import std.file : readText;
-
+void main(string[] argv) {
     bool debugMode = false;
     string source = "";
+    Env env;
 
     if (argv.length == 2 && argv[1] == "-d") debugMode = true;
     if (argv.length == 3 && (argv[2] == "-d" || argv[1] == "-d")) debugMode = true;
@@ -153,32 +154,45 @@ void main(string[] argv)
     if (argv.length == 3 && argv[1] != "-" && argv[1] != "-d") source = argv[1];
     if (argv.length == 3 && argv[2] != "-" && argv[2] != "-d") source = argv[2];
 
-    Env env;
-
     void delegate(Term*,int) debugCont = (Term* step, int depth) {
-        writefln(">%s %s", ">".repeat(depth).joiner(""), toString(step));
+        writefln("  >%s %s", ">".repeat(depth).joiner(""), toString(step));
     };
     void delegate(Term*,int) normalCont = (Term* step, int depth) {};
 
-    if (source.length > 0) {
-        string input = source.readText;
-        foreach (expr; input.split(";")) {
+    void handle(string exprs) {
+        foreach (expr; exprs.split(";")) {
+            if (expr.length == 0) continue;
             string[] tokens = expr.split("=");
-            if (tokens.length == 2)
-                env[tokens[0].strip] = parse(tokens[1]);
+            try
+                if (tokens.length > 1) env[tokens[0].strip] = parse(tokens[1..$].joiner("=").text);
+                else if (tokens.length == 1 && tokens[0].strip.length > 0)
+                    expr.parse.eval(env, debugMode ? debugCont : normalCont).toString.writeln;
+            catch (Exception e) writefln("error: %s", e.msg);
+            catch (Error e) writefln("error: %s", e.msg);
         }
-        string[] exprs = input.split(`;`);
-        
+    }
+
+    if (source.length > 0) {
+        handle(source.readText);
         env["main"].eval(env, debugMode ? debugCont : normalCont).toString.writeln;
     } else {
-        string expr;
+        string exprs = "";
         do {
-            write("> ");
-            expr = readln();
-            string[] tokens = expr.split("=");
-            if (tokens.length == 2) env[tokens[0].strip] = parse(tokens[1]);
-            else if (tokens.length == 1)
-                expr.parse.eval(env, debugMode ? debugCont : normalCont).toString.writeln;
-        } while(expr.length > 0);
+            writef("\r%s> ", exprs.length == 0 ? "" : ">");
+            exprs ~= readln();
+            if (exprs.length == 0) return;
+            size_t openParans = exprs.count("(") - exprs.count(")");
+            if (openParans == 0) {
+                handle(exprs);
+                exprs = "";
+            } else if (openParans < 0) {
+                writefln("error: unbalanced parans");
+                exprs = "";
+            }
+            foreach (expr; exprs.split(";")) {
+                if (expr.length == 0) continue;
+                string[] tokens = expr.split("=");
+            }
+        } while(true);
     }
 }

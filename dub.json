@@ -4,6 +4,6 @@
 	],
 	"copyright": "Copyright © 2019, George",
 	"description": "A minimal D application.",
-	"license": "proprietary",
-	"name": "play2"
+	"license": "GPLv3",
+	"name": "typeless"
 }
