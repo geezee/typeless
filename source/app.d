@@ -44,46 +44,39 @@ Term* dup(Term* t) {
 
 Term* parse(string s) {
     string[] tokens = s.replace("(", " ( ").replace(")", " ) ").split!isWhite;
-    int depth = 0;
     Term*[] stack = [];
 
-    void pushToStack(Term* t) {
-        if (stack.length == 0 || t.hasHoles) {
-            stack ~= t;
-        } else {
-            Term* front = stack[$-1];
-            while (true) {
-                if (!front.hasHoles) return;
-                if (front.type == TType.ABS) {
-                    front.t1 = t;
-                } else if (front.type == TType.APP) {
-                    if (front.t1 == null) front.t1 = t;
-                    else if (front.t2 == null) front.t2 = t;
-                }
-                if (!front.hasHoles) {
-                    t = front;
-                    stack = stack[0..$-1];
-                    if (stack.length == 0) { stack ~= front; return; }
-                    front = stack[$-1];
-                } else return;
-            }
+    void fillStackHole() {
+        if (stack.length < 2) return;
+        Term* parent = stack[$-2];
+        Term* front = stack[$-1];
+        final switch (parent.type) {
+        case TType.APP:
+            if (parent.t1 == null) { parent.t1 = front; break; }
+            else if (parent.t2 == null) { parent.t2 = front; break; }
+            goto case;
+        case TType.ABS:
+            if (parent.t1 == null) { parent.t1 = front; break; }
+            goto case;
+        case TType.VAR:
+            stack[$-2] = new Term(TType.APP, null, parent, front);
         }
+        stack = stack[0..$-1];
     }
 
     for (int i=0; i < tokens.length; i++) {
         string token = tokens[i];
         if (token.length == 0) continue;
         if (token == "(") {
-            depth++;
-            if(tokens[i+1] != "lambda") pushToStack(new Term(TType.APP));
+            if(tokens[i+1] != "lambda") stack ~= new Term(TType.APP);
         } else if (token == "lambda")  {
-            pushToStack(new Term(TType.ABS, tokens[i+1]));
+            stack ~= new Term(TType.ABS, tokens[i+1]);
             i++; // skip the var
-        } else if (token == ")") {
-            depth--;
-        } else pushToStack(new Term(TType.VAR, token));
+        } else if (token == ")") fillStackHole();
+        else { stack ~= new Term(TType.VAR, token); fillStackHole(); }
     }
-    assert (depth == 0, "unbalanced parans");
+
+    assert (stack.length == 1, "unbalanced parans");
     return stack[0];
 }
 
