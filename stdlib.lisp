@@ -24,7 +24,6 @@ add = lambda n (lambda m (lambda S (lambda z (n S (m S z)))));
 mult = lambda n (lambda m (lambda S (lambda z (m (n S) z))));
 odd? = lambda b (b not false);
 even? = lambda b (b not true);
-
 pred_h = lambda n (n (lambda p (apply-if-else (apply-first not)
                                               (apply-second succ)
                                               p))
@@ -42,7 +41,6 @@ eq-n? = lambda n (lambda m (and (zero? (minus n m))
 5 = (pred ((add 2) 4));
 8 = ((add 4) ((mult 2) 2));
 10 = ((mult 5) 2);
-
 
 nil = lambda c (lambda z z);
 cons = lambda hd (lambda tl
@@ -90,6 +88,26 @@ dummy-list = (cons 3 (cons 2 (cons 1 nil)));
 print-num = lambda n (n (const (print 1)) 0);
 print-bool = lambda b ((if b (lambda _ (print true)) (lambda _ (print false))) id);
 
+
 fact = lambda n ((if (zero? n) (lambda _ 1) (lambda _ (mult n (fact (pred n))))) id);
+
+Y = lambda f (
+        (lambda x (f (x x)))
+        (lambda x (f (x x))));
+
+fact-y = lambda self (lambda n ((if (zero? n)
+                                    (lambda _ 1)
+                                    (lambda _ (mult n (self (pred n))))) id));
+
+fib-y = lambda self (lambda n
+            ((if (zero? n)
+                 (lambda _ 1)
+                 (lambda _ (if (eq-n? n 1)
+                               1
+                               (add (self (pred n))
+                                    (self (pred (pred n))))))) id));
+
+
+fibonacci = (Y fib-y);
 
 main = (print-num (fact 8));
