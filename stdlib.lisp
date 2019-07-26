@@ -1,5 +1,5 @@
 id = lambda t t;
-const = lambda c (lambda _ c)
+const = lambda c (lambda _ c);
 
 true = lambda t (lambda f t);
 false = lambda t (lambda f f);
