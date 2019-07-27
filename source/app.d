@@ -194,21 +194,152 @@ Term* beta(Term* term, string var, Term* val, Term* delegate(Term*) cont = (Term
 }
 
 
+Term* evalCPS(Term* term, Env env, void delegate(Term*, int) interfunc, int depth = 0,
+              Term* delegate(Term*) cont = (Term* t) { return t; }) {
+    interfunc(term, depth);
+
+    if (term.type == TType.VAR) {
+        if (term.a == "print") {
+            return cont(term);
+        } else if ((term.a in env) !is null) {
+            return evalCPS(env[term.a].dup, env, interfunc, depth, cont);
+        } else assert(false, "Unbounded variable " ~ term.a);
+    } else if (term.type == TType.APP) {
+        if (term.t1.type == TType.ABS) {
+            term.t1.t1 = betaOpt(term.t1.t1, term.t1.a, term.t2.dup);
+            return evalCPS(term.t1.t1, env, interfunc, depth, cont);
+        } else {
+            if (term.t1.type == TType.VAR && term.t1.a == "print") {
+                writefln("[print] ", term.t2.toString);
+                return evalCPS(term.t2, env, interfunc, depth-1, cont);
+            }
+            return evalCPS(term.t1, env, interfunc, depth+1, (Term* ans) {
+                term.t1 = ans;
+                return evalCPS(term.t2, env, interfunc, depth+1, (Term* ans) {
+                    term.t2 = ans;
+                    return evalCPS(term, env, interfunc, depth, cont);
+                });
+            });
+        }
+    } else {
+        return cont(term);
+    }
+}
+
+
+struct EvalCont {
+    Term* term;
+    bool inner;
+    int depth;
+    EvalCont* next;
+}
+
+string toString(EvalCont* c) {
+    import std.conv : to;
+    if (c == null) return "NULL";
+    return "(" ~ toString(c.term) ~ ", " ~ c.inner.to!string ~ ") -> " ~ toString(c.next);
+}
+
+Term* applyEvalCont(Term* ans, Env env, void delegate(Term*, int) interfunc, EvalCont* cont) {
+    if (cont == null) return ans;
+    if (cont.inner) {
+        cont.term.t2 = ans;
+        return evalDefun(cont.term, env, interfunc, cont.depth+1, cont.next);
+    } else {
+        cont.term.t1 = ans;
+        return evalDefun(cont.term.t2, env, interfunc, cont.depth, new EvalCont(cont.term, true,
+                    cont.depth, cont.next));
+    }
+}
+
+Term* evalDefun(Term* term, Env env, void delegate(Term*, int) interfunc,
+                int depth = 0, EvalCont* cont = null) {
+    interfunc(term, depth);
+    if (term.type == TType.VAR) {
+        if (term.a == "print")
+            return applyEvalCont(term, env, interfunc, cont);
+        else if ((term.a in env) !is null)
+            return evalDefun(env[term.a].dup, env, interfunc, depth, cont);
+        else assert(false, "Unbounded variable " ~ term.a);
+    } else if (term.type == TType.APP) {
+        if (term.t1.type == TType.ABS) {
+            term.t1.t1 = betaOpt(term.t1.t1, term.t1.a, term.t2.dup);
+            return evalDefun(term.t1.t1, env, interfunc, depth-1, cont);
+        }
+        if (term.t1.type == TType.VAR && term.t1.a == "print") {
+            writefln("[print] %s", term.t2.toString);
+            return evalDefun(term.t2, env, interfunc, depth-1, cont);
+        }
+        return evalDefun(term.t1, env, interfunc, depth+1, new EvalCont(term, false, depth, cont));
+    } else return applyEvalCont(term, env, interfunc, cont);
+}
+
+
+Term* evalOpt(Term* term, Env env, void delegate(Term*, int) interfunc,
+              int depth = 0, EvalCont* cont = null) {
+    Term* ans;
+    EvalCont* acont;
+    do {
+        interfunc(term, depth);
+        int computeAns = false;
+        if (term.type == TType.VAR) {
+            if (term.a == "print") {
+                computeAns = true;
+                ans = term; acont = cont;
+            } else if ((term.a in env) !is null) {
+                term = env[term.a].dup;
+            } else assert(false, "Unbounded variable " ~ term.a);
+        } else if (term.type == TType.APP) {
+            if (term.t1.type == TType.ABS) {
+                term.t1.t1 = betaOpt(term.t1.t1, term.t1.a, term.t2.dup);
+                term = term.t1.t1;
+                depth--;
+            } else if (term.t1.type == TType.VAR && term.t1.a == "print") {
+                writefln("[print] %s", term.t2.toString);
+                term = term.t2;
+                depth--;
+            } else {
+                cont = new EvalCont(term, false, depth, cont);
+                term = term.t1;
+                depth++;
+            }
+        } else {
+            computeAns = true;
+            ans = term; acont = cont;
+        }
+
+        if (computeAns) {
+            if (acont == null) return ans;
+            if (acont.inner) {
+                acont.term.t2 = ans;
+                term = acont.term;
+                depth = acont.depth+1;
+                cont = acont.next;
+            } else {
+                acont.term.t1 = ans;
+                term = acont.term.t2;
+                depth = acont.depth;
+                cont = new EvalCont(acont.term, true, acont.depth, acont.next);
+            }
+        }
+    } while (true);
+}
+
+
 Term* eval(Term* term, Env env, void delegate(Term*, int) interfunc, int depth = 0) {
     interfunc(term, depth);
 
     final switch (term.type) {
         case TType.VAR:
             if (term.a == "print") {
-                return new Term(TType.VAR, term.a);
+                return term;
             } else if ((term.a in env) !is null) {
-                Term* duped = env[term.a].dup;
-                return eval(duped, env, interfunc, depth);
+                return eval(env[term.a].dup, env, interfunc, depth);
             } else assert(false, "Unbound variable " ~ term.a);
         case TType.APP:
             if (term.t1.type == TType.ABS) {
                 Term* duped = term.t2.dup;
-                term.t1.t1 = betaOpt(term.t1.t1, term.t1.a, duped);
+                term.t1.t1 = beta(term.t1.t1, term.t1.a, term.t2.dup);
                 return eval(term.t1.t1, env, interfunc, depth);
             } else {
                 if (term.t1.type == TType.VAR && term.t1.a == "print") {
@@ -225,11 +356,14 @@ Term* eval(Term* term, Env env, void delegate(Term*, int) interfunc, int depth =
 }
 
 
+
 void main(string[] argv) {
     bool debugMode = false;
     string source = "";
     int evalCount = 0;
     Env env;
+
+    auto evaluator = &evalOpt;
 
     if (argv.length == 2 && argv[1] == "-d") debugMode = true;
     if (argv.length == 3 && (argv[2] == "-d" || argv[1] == "-d")) debugMode = true;
@@ -252,7 +386,7 @@ void main(string[] argv) {
             try
                 if (tokens.length > 1) env[tokens[0].strip] = parse(tokens[1..$].joiner("=").text);
                 else if (tokens.length == 1 && tokens[0].strip.length > 0) {
-                    expr.parse.eval(env, debugMode ? debugCont : normalCont).toString.writeln;
+                    evaluator(expr.parse, env, debugMode ? debugCont : normalCont).toString.writeln;
                     writefln("\t%d reductions", evalCount);
                     evalCount = 0;
                 }
@@ -263,7 +397,7 @@ void main(string[] argv) {
 
     if (source.length > 0) {
         handle(source.readText);
-        env["main"].eval(env, debugMode ? debugCont : normalCont).toString.writeln;
+        evaluator(env["main"], env, debugMode ? debugCont : normalCont).toString.writeln;
         writefln("\t%d reductions", evalCount);
     } else {
         string exprs = "";
