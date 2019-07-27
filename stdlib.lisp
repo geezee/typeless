@@ -110,4 +110,4 @@ fib-y = lambda self (lambda n
 
 fibonacci = (Y fib-y);
 
-main = (print-num (fact 8));
+main = ((fact 8) id zero);

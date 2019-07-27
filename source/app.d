@@ -27,40 +27,10 @@ string toString(Term* t) {
     return "";
 }
 
+
 Term* dup(Term* t) {
     if (t == null) return null;
     return new Term(t.type, t.a, t.t1.dup, t.t2.dup);
-}
-
-struct DupCont {
-    Term* term;
-    bool inner;
-    Term* ans1;
-    DupCont* next;
-}
-
-Term* dupCPS(Term* t, Term* delegate(Term*) cont) {
-    if (t == null) return cont(null);
-    return dupCPS(t.t1, (Term* ans1) {
-        return dupCPS(t.t2, (Term* ans2) {
-            return cont(new Term(t.type, t.a, ans1, ans2));
-        });
-    });
-}
-
-Term* applyDup(Term* ans, DupCont* cont) {
-    do {
-        if (cont == null) return ans;
-        if (cont.inner) {
-            ans = new Term(cont.term.type, cont.term.a, cont.ans1, ans);
-            cont = cont.next.next;
-        } else return dupDefun(cont.term.t2, new DupCont(cont.term, true, ans, cont));
-    } while (true);
-}
-
-Term* dupDefun(Term* t, DupCont* cont = null) {
-    if (t == null) return applyDup(t, cont);
-    return dupDefun(t.t1, new DupCont(t, false, null, cont));
 }
 
 
@@ -136,7 +106,7 @@ Term* applyBetaCont(Term* ans, string var, Term* val, BetaCont* cont) { // var, 
 }
 
 Term* betaDefun(Term* term, string var, Term* val, BetaCont* cont = null) {
-    if (term == null) return term;
+    if (term == null) return applyBetaCont(term, var, val, cont);
     final switch (term.type) {
         case TType.VAR:
             return applyBetaCont(term.a == var ? val : term, var, val, cont);
@@ -151,53 +121,52 @@ Term* betaDefun(Term* term, string var, Term* val, BetaCont* cont = null) {
 
 // full blown optimization
 Term* betaOpt(Term* term, string var, Term* val, BetaCont* cont = null) {
-    Term* ans = null;
-    bool computeAns = false;
-    while (true) {
-        if (term == null) return term;
-        computeAns = false;
-
-        if (term.type == TType.VAR) {
-            ans = term.a == var ? val : term;
+    Term* ans;
+    BetaCont* acont;
+    do {
+        bool computeAns = false;
+        if (term == null) {
             computeAns = true;
+            ans = term; acont = cont;
+        } else if (term.type == TType.VAR) {
+            computeAns = true;
+            ans = term.a == var ? val : term; acont = cont;
         } else if (term.type == TType.ABS) {
             if (term.a == var) {
-                ans = term;
-                cont = cont.next;
                 computeAns = true;
+                ans = term; acont = cont;
             } else {
+                cont = new BetaCont(TType.ABS, 0, term, cont);
                 term = term.t1;
-                cont = new BetaCont(TType.ABS, -1, term, cont);
             }
-        } else if (term.type == TType.APP) {
-            term = term.t1;
+        } else {
             cont = new BetaCont(TType.APP, 1, term, cont);
+            term = term.t1;
         }
-
-        if (!computeAns) continue;
-
-        while(true) {
-            if (cont == null) return ans;
-            if (cont.type == TType.ABS) {
-                cont.term.t1 = ans;
-                ans = cont.term;
-                cont = cont.next;
-            } else if (cont.type == TType.APP) {
-                if (cont.argNum == 1) {
-                    cont.term.t1 = ans;
-                    ans = cont.term.t2;
-                    cont = new BetaCont(cont.type, 2, cont.term, cont.next);
-                    break;
+        if (computeAns) {
+            while(true) {
+                if (acont == null) return ans;
+                if (acont.type == TType.ABS) {
+                        acont.term.t1 = ans;
+                        ans = acont.term;
+                        acont = acont.next;
+                } else if (acont.type == TType.APP) {
+                    if (acont.argNum == 1) {
+                        acont.term.t1 = ans;
+                        term = acont.term.t2;
+                        cont = new BetaCont(acont.type, 2, acont.term, acont.next);
+                        break;
+                    } else {
+                        acont.term.t2 = ans;
+                        ans = acont.term;
+                        acont = acont.next;
+                    }
                 } else {
-                    cont.term.t2 = ans;
-                    ans = cont.term;
-                    cont = cont.next;
+                    acont = acont.next;
                 }
-            } else cont = cont.next;
+            }
         }
-
-        term = ans;
-    }
+    } while (true);
 }
 
 
@@ -233,13 +202,13 @@ Term* eval(Term* term, Env env, void delegate(Term*, int) interfunc, int depth =
             if (term.a == "print") {
                 return new Term(TType.VAR, term.a);
             } else if ((term.a in env) !is null) {
-                Term* duped = env[term.a].dupDefun;
+                Term* duped = env[term.a].dup;
                 return eval(duped, env, interfunc, depth);
             } else assert(false, "Unbound variable " ~ term.a);
         case TType.APP:
             if (term.t1.type == TType.ABS) {
-                Term* duped = term.t2.dupDefun;
-                term.t1.t1 = betaDefun(term.t1.t1, term.t1.a, duped);
+                Term* duped = term.t2.dup;
+                term.t1.t1 = betaOpt(term.t1.t1, term.t1.a, duped);
                 return eval(term.t1.t1, env, interfunc, depth);
             } else {
                 if (term.t1.type == TType.VAR && term.t1.a == "print") {
@@ -259,6 +228,7 @@ Term* eval(Term* term, Env env, void delegate(Term*, int) interfunc, int depth =
 void main(string[] argv) {
     bool debugMode = false;
     string source = "";
+    int evalCount = 0;
     Env env;
 
     if (argv.length == 2 && argv[1] == "-d") debugMode = true;
@@ -269,8 +239,11 @@ void main(string[] argv) {
 
     void delegate(Term*,int) debugCont = (Term* step, int depth) {
         writefln("  >%s %s", ">".repeat(depth).joiner(""), toString(step));
+        evalCount++;
     };
-    void delegate(Term*,int) normalCont = (Term* step, int depth) {};
+    void delegate(Term*,int) normalCont = (Term* step, int depth) {
+        evalCount++;
+    };
 
     void handle(string exprs) {
         foreach (expr; exprs.split(";")) {
@@ -278,8 +251,11 @@ void main(string[] argv) {
             string[] tokens = expr.split("=");
             try
                 if (tokens.length > 1) env[tokens[0].strip] = parse(tokens[1..$].joiner("=").text);
-                else if (tokens.length == 1 && tokens[0].strip.length > 0)
+                else if (tokens.length == 1 && tokens[0].strip.length > 0) {
                     expr.parse.eval(env, debugMode ? debugCont : normalCont).toString.writeln;
+                    writefln("\t%d reductions", evalCount);
+                    evalCount = 0;
+                }
             catch (Exception e) writefln("error: %s", e.msg);
             catch (Error e) writefln("error: %s", e.msg);
         }
@@ -288,6 +264,7 @@ void main(string[] argv) {
     if (source.length > 0) {
         handle(source.readText);
         env["main"].eval(env, debugMode ? debugCont : normalCont).toString.writeln;
+        writefln("\t%d reductions", evalCount);
     } else {
         string exprs = "";
         do {
