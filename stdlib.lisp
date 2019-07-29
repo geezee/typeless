@@ -110,5 +110,4 @@ fib-y = lambda self (lambda n
 
 fibonacci = (Y fib-y);
 
-main = ((fibonacci (add 5 10)) id zero);
-
+main = ((fibonacci (add (succ (succ (succ (succ (succ (succ (succ (succ 5)))))))) 10)) id zero);

@@ -7,6 +7,7 @@ import std.file : readText;
 import std.algorithm.searching : count;
 import std.ascii : isWhite;
 import std.conv : text;
+import std.getopt;
 
 enum TType { VAR, APP, ABS };
 
@@ -31,6 +32,61 @@ string toString(Term* t) {
 Term* dup(Term* t) {
     if (t == null) return null;
     return new Term(t.type, t.a, t.t1.dup, t.t2.dup);
+}
+
+Term* dupCPS(Term* t, Term* delegate(Term*) cont) {
+    if (t == null) return cont(null);
+    return dupCPS(t.t1, (Term* ans1) {
+        return dupCPS(t.t2, (Term* ans2) {
+            return new Term(t.type, t.a, ans1, ans2);
+        });
+    });
+}
+
+
+struct DupCont {
+    Term* term;
+    bool inner;
+    Term* ans1;
+    DupCont* next;
+}
+
+Term* applyDup(Term* ans, DupCont* cont) {
+    if (cont == null) return ans;
+    if (cont.inner) {
+        Term* t = new Term(cont.term.type, cont.term.a, cont.ans1, ans);
+        return applyDup(t, cont.next);
+    } else {
+        return dupDefun(cont.term.t2, new DupCont(cont.term, true, ans, cont.next));
+    }
+}
+
+Term* dupDefun(Term* t, DupCont* cont = null) {
+    if (t == null) return applyDup(t, cont);
+    return dupDefun(t.t1, new DupCont(t, false, null, cont));
+}
+
+Term* dupOpt(Term* t, DupCont* cont = null) {
+    while (true) {
+        if (t == null) {
+            Term* ans = t;
+            DupCont* acont = cont;
+            while (true) {
+                if (acont == null) return ans;
+                if (acont.inner) {
+                    ans = new Term(acont.term.type, acont.term.a, acont.ans1, ans);
+                    acont = acont.next;
+                } else {
+                    t = acont.term.t2;
+                    cont = new DupCont(acont.term, true, ans, acont.next);
+                    break;
+                }
+            }
+        } else {
+            cont = new DupCont(t, false, null, cont);
+            t = t.t1;
+        }
+    }
 }
 
 
@@ -276,7 +332,7 @@ Term* evalDefun(Term* term, Env env, void delegate(Term*, int) interfunc,
 
 
 Term* evalOpt(Term* term, Env env, void delegate(Term*, int) interfunc,
-              int depth = 0, EvalCont* cont = null) {
+              bool doBetaOpt, bool doDupOpt, int depth = 0, EvalCont* cont = null) {
     Term* ans;
     EvalCont* acont;
     do {
@@ -287,11 +343,13 @@ Term* evalOpt(Term* term, Env env, void delegate(Term*, int) interfunc,
                 computeAns = true;
                 ans = term; acont = cont;
             } else if ((term.a in env) !is null) {
-                term = env[term.a].dup;
+                term = doDupOpt ? env[term.a].dupOpt : env[term.a].dup;
             } else assert(false, "Unbounded variable " ~ term.a);
         } else if (term.type == TType.APP) {
             if (term.t1.type == TType.ABS) {
-                term.t1.t1 = betaOpt(term.t1.t1, term.t1.a, term.t2.dup);
+                Term* duped = doDupOpt ? term.t2.dupOpt : term.t2.dup;
+                term.t1.t1 = doBetaOpt ? betaOpt(term.t1.t1, term.t1.a, duped)
+                                       : beta(term.t1.t1, term.t1.a, duped);
                 term = term.t1.t1;
                 depth--;
             } else if (term.t1.type == TType.VAR && term.t1.a == "print") {
@@ -326,7 +384,8 @@ Term* evalOpt(Term* term, Env env, void delegate(Term*, int) interfunc,
 }
 
 
-Term* eval(Term* term, Env env, void delegate(Term*, int) interfunc, int depth = 0) {
+Term* eval(Term* term, Env env, void delegate(Term*, int) interfunc, bool doBetaOpt,
+           bool doDupOpt, int depth = 0) {
     interfunc(term, depth);
 
     final switch (term.type) {
@@ -334,21 +393,23 @@ Term* eval(Term* term, Env env, void delegate(Term*, int) interfunc, int depth =
             if (term.a == "print") {
                 return term;
             } else if ((term.a in env) !is null) {
-                return eval(env[term.a].dup, env, interfunc, depth);
+                Term* dupped = doDupOpt ? env[term.a].dupOpt : env[term.a].dup;
+                return eval(dupped, env, interfunc, doBetaOpt, doDupOpt, depth);
             } else assert(false, "Unbound variable " ~ term.a);
         case TType.APP:
             if (term.t1.type == TType.ABS) {
-                Term* duped = term.t2.dup;
-                term.t1.t1 = beta(term.t1.t1, term.t1.a, term.t2.dup);
-                return eval(term.t1.t1, env, interfunc, depth);
+                Term* duped = doDupOpt ? term.t2.dupOpt : term.t2.dup;
+                term.t1.t1 = doBetaOpt ? betaOpt(term.t1.t1, term.t1.a, duped)
+                                       : beta(term.t1.t1, term.t1.a, duped);
+                return eval(term.t1.t1, env, interfunc, doBetaOpt, doDupOpt, depth);
             } else {
                 if (term.t1.type == TType.VAR && term.t1.a == "print") {
                     writefln("[print] %s", term.t2.toString);
-                    return eval(term.t2, env, interfunc, depth-1);
+                    return eval(term.t2, env, interfunc, doBetaOpt, doDupOpt, depth-1);
                 }
-                term.t1 = eval(term.t1, env, interfunc, depth+1);
-                term.t2 = eval(term.t2, env, interfunc, depth+1);
-                return eval(term, env, interfunc, depth);
+                term.t1 = eval(term.t1, env, interfunc, doBetaOpt, doDupOpt, depth+1);
+                term.t2 = eval(term.t2, env, interfunc, doBetaOpt, doDupOpt, depth+1);
+                return eval(term, env, interfunc, doBetaOpt, doDupOpt, depth);
             }
         case TType.ABS:
             return term;
@@ -357,19 +418,23 @@ Term* eval(Term* term, Env env, void delegate(Term*, int) interfunc, int depth =
 
 
 
-void main(string[] argv) {
+void main(string[] args) {
     bool debugMode = false;
+    bool doEvalOpt = false;
+    bool doBetaOpt = false;
+    bool doDupOpt = false;
     string source = "";
     int evalCount = 0;
     Env env;
 
-    auto evaluator = &evalOpt;
-
-    if (argv.length == 2 && argv[1] == "-d") debugMode = true;
-    if (argv.length == 3 && (argv[2] == "-d" || argv[1] == "-d")) debugMode = true;
-    if (argv.length == 2 && argv[1] != "-" && argv[1] != "-d") source = argv[1];
-    if (argv.length == 3 && argv[1] != "-" && argv[1] != "-d") source = argv[1];
-    if (argv.length == 3 && argv[2] != "-" && argv[2] != "-d") source = argv[2];
+    getopt(
+        args,
+        "debug", &debugMode,
+        "e", &doEvalOpt,
+        "b", &doBetaOpt,
+        "d", &doDupOpt
+    );
+    if (args.length > 1) source = args[1];
 
     void delegate(Term*,int) debugCont = (Term* step, int depth) {
         writefln("  >%s %s", ">".repeat(depth).joiner(""), toString(step));
@@ -384,9 +449,18 @@ void main(string[] argv) {
             if (expr.length == 0) continue;
             string[] tokens = expr.split("=");
             try
-                if (tokens.length > 1) env[tokens[0].strip] = parse(tokens[1..$].joiner("=").text);
+                if (tokens.length > 1)
+                    env[tokens[0].strip] = parse(tokens[1..$].joiner("=").text);
                 else if (tokens.length == 1 && tokens[0].strip.length > 0) {
-                    evaluator(expr.parse, env, debugMode ? debugCont : normalCont).toString.writeln;
+                    if (doEvalOpt) {
+                        evalOpt(expr.parse, env,
+                                debugMode ? debugCont : normalCont,
+                                doBetaOpt, doDupOpt).toString.writeln;
+                    } else {
+                        eval(expr.parse, env,
+                             debugMode ? debugCont : normalCont,
+                             doBetaOpt, doDupOpt).toString.writeln;
+                    }
                     writefln("\t%d reductions", evalCount);
                     evalCount = 0;
                 }
@@ -396,9 +470,7 @@ void main(string[] argv) {
     }
 
     if (source.length > 0) {
-        handle(source.readText);
-        evaluator(env["main"], env, debugMode ? debugCont : normalCont).toString.writeln;
-        writefln("\t%d reductions", evalCount);
+        handle(source.readText ~ "; main");
     } else {
         string exprs = "";
         do {
