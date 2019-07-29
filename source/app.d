@@ -331,8 +331,8 @@ Term* evalDefun(Term* term, Env env, void delegate(Term*, int) interfunc,
 }
 
 
-Term* evalOpt(Term* term, Env env, void delegate(Term*, int) interfunc,
-              bool doBetaOpt, bool doDupOpt, int depth = 0, EvalCont* cont = null) {
+Term* evalOpt(alias beta, alias dup)
+             (Term* term, Env env, void delegate(Term*, int) interfunc, int depth = 0, EvalCont* cont = null) {
     Term* ans;
     EvalCont* acont;
     do {
@@ -343,13 +343,11 @@ Term* evalOpt(Term* term, Env env, void delegate(Term*, int) interfunc,
                 computeAns = true;
                 ans = term; acont = cont;
             } else if ((term.a in env) !is null) {
-                term = doDupOpt ? env[term.a].dupOpt : env[term.a].dup;
+                term = dup(env[term.a]);
             } else assert(false, "Unbounded variable " ~ term.a);
         } else if (term.type == TType.APP) {
             if (term.t1.type == TType.ABS) {
-                Term* duped = doDupOpt ? term.t2.dupOpt : term.t2.dup;
-                term.t1.t1 = doBetaOpt ? betaOpt(term.t1.t1, term.t1.a, duped)
-                                       : beta(term.t1.t1, term.t1.a, duped);
+                term.t1.t1 = beta(term.t1.t1, term.t1.a, dup(term.t2));
                 term = term.t1.t1;
                 depth--;
             } else if (term.t1.type == TType.VAR && term.t1.a == "print") {
@@ -384,8 +382,8 @@ Term* evalOpt(Term* term, Env env, void delegate(Term*, int) interfunc,
 }
 
 
-Term* eval(Term* term, Env env, void delegate(Term*, int) interfunc, bool doBetaOpt,
-           bool doDupOpt, int depth = 0) {
+Term* eval(alias beta, alias dup)
+          (Term* term, Env env, void delegate(Term*, int) interfunc, int depth = 0) {
     interfunc(term, depth);
 
     final switch (term.type) {
@@ -393,23 +391,20 @@ Term* eval(Term* term, Env env, void delegate(Term*, int) interfunc, bool doBeta
             if (term.a == "print") {
                 return term;
             } else if ((term.a in env) !is null) {
-                Term* dupped = doDupOpt ? env[term.a].dupOpt : env[term.a].dup;
-                return eval(dupped, env, interfunc, doBetaOpt, doDupOpt, depth);
+                return eval!(beta,dup)(dup(env[term.a]), env, interfunc, depth);
             } else assert(false, "Unbound variable " ~ term.a);
         case TType.APP:
             if (term.t1.type == TType.ABS) {
-                Term* duped = doDupOpt ? term.t2.dupOpt : term.t2.dup;
-                term.t1.t1 = doBetaOpt ? betaOpt(term.t1.t1, term.t1.a, duped)
-                                       : beta(term.t1.t1, term.t1.a, duped);
-                return eval(term.t1.t1, env, interfunc, doBetaOpt, doDupOpt, depth);
+                term.t1.t1 = beta(term.t1.t1, term.t1.a, dup(term.t2));
+                return eval!(beta,dup)(term.t1.t1, env, interfunc, depth);
             } else {
                 if (term.t1.type == TType.VAR && term.t1.a == "print") {
                     writefln("[print] %s", term.t2.toString);
-                    return eval(term.t2, env, interfunc, doBetaOpt, doDupOpt, depth-1);
+                    return eval!(beta,dup)(term.t2, env, interfunc, depth-1);
                 }
-                term.t1 = eval(term.t1, env, interfunc, doBetaOpt, doDupOpt, depth+1);
-                term.t2 = eval(term.t2, env, interfunc, doBetaOpt, doDupOpt, depth+1);
-                return eval(term, env, interfunc, doBetaOpt, doDupOpt, depth);
+                term.t1 = eval!(beta,dup)(term.t1, env, interfunc, depth+1);
+                term.t2 = eval!(beta,dup)(term.t2, env, interfunc, depth+1);
+                return eval!(beta,dup)(term, env, interfunc, depth);
             }
         case TType.ABS:
             return term;
@@ -444,6 +439,8 @@ void main(string[] args) {
         evalCount++;
     };
 
+    auto cont = debugMode ? debugCont : normalCont;
+
     void handle(string exprs) {
         foreach (expr; exprs.split(";")) {
             if (expr.length == 0) continue;
@@ -452,15 +449,16 @@ void main(string[] args) {
                 if (tokens.length > 1)
                     env[tokens[0].strip] = parse(tokens[1..$].joiner("=").text);
                 else if (tokens.length == 1 && tokens[0].strip.length > 0) {
-                    if (doEvalOpt) {
-                        evalOpt(expr.parse, env,
-                                debugMode ? debugCont : normalCont,
-                                doBetaOpt, doDupOpt).toString.writeln;
-                    } else {
-                        eval(expr.parse, env,
-                             debugMode ? debugCont : normalCont,
-                             doBetaOpt, doDupOpt).toString.writeln;
-                    }
+                    Term* t;
+                    if (doEvalOpt) if (doBetaOpt) if (doDupOpt) t = evalOpt!(betaOpt,dupOpt)(expr.parse, env, cont);
+                                                  else          t = evalOpt!(betaOpt,dup)(expr.parse, env, cont);
+                                   else           if (doDupOpt) t = evalOpt!(beta,dupOpt)(expr.parse, env, cont);
+                                                  else          t = evalOpt!(beta,dup)(expr.parse, env, cont);
+                    else           if (doBetaOpt) if (doDupOpt) t = eval!(betaOpt, dupOpt)(expr.parse, env, cont);
+                                                  else          t = eval!(betaOpt,dup)(expr.parse, env, cont);
+                                   else           if (doDupOpt) t = eval!(beta,dupOpt)(expr.parse, env, cont);
+                                                  else          t = eval!(beta,dup)(expr.parse, env, cont);
+                    writeln(t.toString);
                     writefln("\t%d reductions", evalCount);
                     evalCount = 0;
                 }
