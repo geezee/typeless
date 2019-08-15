@@ -3,31 +3,9 @@ module lambdacalc;
 import std.ascii : isWhite;
 import std.array : replace, split;
 
-struct Stack(T) {
-    private T[] members = [ T.init ];
-    private ulong top = 0;
-
-    @property bool empty() {
-        return top == 0;
-    }
-
-    T front() {
-        return members[top-1];
-    }
-
-    void removeFront() {
-        top--;
-    }
-
-    void insertFront(T member) {
-        if (top >= members.length)
-            members.length *= 2;
-        members[top] = member;
-        top++;
-    }
-}
 
 enum TType { VAR, APP, ABS };
+
 
 struct Term {
     TType type;
@@ -35,6 +13,7 @@ struct Term {
     Term* t1;
     Term* t2;
 }
+
 
 alias Env = Term*[string];
 

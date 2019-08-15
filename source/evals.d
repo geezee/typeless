@@ -4,8 +4,46 @@ import std.stdio : writefln;
 
 import lambdacalc;
 
-Term* evalCPS(alias beta, alias dup)(Term* term, Env env, void delegate(Term*, int) interfunc, int depth = 0,
-              Term* delegate(Term*) cont = (Term* t) { return t; }) {
+
+
+// Original recursive function
+// the two template parameters `beta` and `dup` are the beta/dup functions to use
+Term* eval(alias beta, alias dup)
+          (Term* term, Env env, void delegate(Term*, int) interfunc, int depth = 0) {
+    interfunc(term, depth);
+
+    final switch (term.type) {
+        case TType.VAR:
+            if (term.a == "print") {
+                return term;
+            } else if ((term.a in env) !is null) {
+                return eval!(beta,dup)(dup(env[term.a]), env, interfunc, depth);
+            } else assert(false, "Unbound variable " ~ term.a);
+        case TType.APP:
+            if (term.t1.type == TType.ABS) {
+                term.t1.t1 = beta(term.t1.t1, term.t1.a, dup(term.t2));
+                return eval!(beta,dup)(term.t1.t1, env, interfunc, depth);
+            } else {
+                if (term.t1.type == TType.VAR && term.t1.a == "print") {
+                    writefln("[print] %s", term.t2.toString);
+                    return eval!(beta,dup)(term.t2, env, interfunc, depth-1);
+                }
+                term.t1 = eval!(beta,dup)(term.t1, env, interfunc, depth+1);
+                term.t2 = eval!(beta,dup)(term.t2, env, interfunc, depth+1);
+                return eval!(beta,dup)(term, env, interfunc, depth);
+            }
+        case TType.ABS:
+            return term;
+    }
+}
+
+
+
+// recursive version rewritten in continuation-passing style
+// the two template parameters `beta` and `dup` are the beta/dup functions to use
+Term* evalCPS(alias beta, alias dup)
+             (Term* term, Env env, void delegate(Term*, int) interfunc, int depth = 0,
+              Term* delegate(Term*) cont = (Term* t) { return t; }) { // default continuation: do nothing
     interfunc(term, depth);
 
     if (term.type == TType.VAR) {
@@ -37,7 +75,19 @@ Term* evalCPS(alias beta, alias dup)(Term* term, Env env, void delegate(Term*, i
 }
 
 
-Term* applyEvalCont(alias beta, alias dup)(Term* ans, Env env, void delegate(Term*, int) interfunc, EvalCont* cont) {
+
+// For defunctionalization we need to represent every lambda passed to evalCPS
+struct EvalCont {
+    Term* term;
+    bool inner;     // true represents lambda at line 67, false is the one at line 65
+    int depth;
+    EvalCont* next;
+}
+
+// the special apply function needed for defunctionalization
+// the two template parameters `beta` and `dup` are the beta/dup functions to use
+Term* applyEval(alias beta, alias dup)
+               (Term* ans, Env env, void delegate(Term*, int) interfunc, EvalCont* cont) {
     if (cont == null) return ans;
     if (cont.inner) {
         cont.term.t2 = ans;
@@ -49,20 +99,14 @@ Term* applyEvalCont(alias beta, alias dup)(Term* ans, Env env, void delegate(Ter
     }
 }
 
-
-struct EvalCont {
-    Term* term;
-    bool inner;
-    int depth;
-    EvalCont* next;
-}
-
-Term* evalDefun(alias beta, alias dup)(Term* term, Env env, void delegate(Term*, int) interfunc,
-                int depth = 0, EvalCont* cont = null) {
+// the defunctionalized version of eval
+// the two template parameters `beta` and `dup` are the beta/dup functions to use
+Term* evalDefun(alias beta, alias dup)
+               (Term* term, Env env, void delegate(Term*, int) interfunc, int depth = 0, EvalCont* cont = null) {
     interfunc(term, depth);
     if (term.type == TType.VAR) {
         if (term.a == "print")
-            return applyEvalCont(term, env, interfunc, cont);
+            return applyEval(term, env, interfunc, cont);
         else if ((term.a in env) !is null)
             return evalDefun(env[term.a].dup, env, interfunc, depth, cont);
         else assert(false, "Unbounded variable " ~ term.a);
@@ -76,10 +120,13 @@ Term* evalDefun(alias beta, alias dup)(Term* term, Env env, void delegate(Term*,
             return evalDefun(term.t2, env, interfunc, depth-1, cont);
         }
         return evalDefun(term.t1, env, interfunc, depth+1, new EvalCont(term, false, depth, cont));
-    } else return applyEvalCont(term, env, interfunc, cont);
+    } else return applyEval(term, env, interfunc, cont);
 }
 
 
+
+// After performing inlining and tail-call optimization on evalDefun and applyEval
+// the two template parameters `beta` and `dup` are the beta/dup functions to use
 Term* evalOpt(alias beta, alias dup)
              (Term* term, Env env, void delegate(Term*, int) interfunc, int depth = 0, EvalCont* cont = null) {
     Term* ans;
@@ -128,92 +175,4 @@ Term* evalOpt(alias beta, alias dup)
             }
         }
     } while (true);
-}
-
-struct EvalData {
-    Term* term;
-    bool inner;
-    int depth;
-}
-
-Term* evalOptStack(alias beta, alias dup)
-                  (Term* term, Env env, void delegate(Term*, int) interfunc, int depth = 0,
-                   Stack!(EvalData*)* stack = new Stack!(EvalData*)()) {
-    Term* ans;
-    EvalData* cont;
-    while (true) {
-        interfunc(term, depth);
-        bool computeAns = false;
-        if (term.type == TType.VAR) {
-            if (term.a == "print") {
-                computeAns = true;
-                ans = term;
-            } else if ((term.a in env) !is null) {
-                term = dup(env[term.a]);
-            } else assert(false, "Unbound variable " ~ term.a);
-        } else if (term.type == TType.APP) {
-            if (term.t1.type == TType.ABS) {
-                term.t1.t1 = beta(term.t1.t1, term.t1.a, dup(term.t2));
-                term = term.t1.t1;
-                depth--;
-            } else if (term.t1.type == TType.VAR && term.t1.a == "print") {
-                writefln("[print] %s", term.t2.toString);
-                term = term.t2;
-                depth--;
-            } else {
-                stack.insertFront(new EvalData(term, false, depth));
-                term = term.t1;
-                depth++;
-            }
-        } else {
-            computeAns = true;
-            ans = term;
-        }
-
-        if (computeAns) {
-            if (stack.empty) return ans;
-            cont = stack.front;
-            stack.removeFront();
-            if (cont.inner) {
-                cont.term.t2 = ans;
-                term = cont.term;
-                depth = cont.depth + 1;
-            } else {
-                cont.term.t1 = ans;
-                term = cont.term.t2;
-                depth = cont.depth;
-                stack.insertFront(new EvalData(cont.term, true, cont.depth));
-            }
-        }
-    }
-}
-
-
-Term* eval(alias beta, alias dup)
-          (Term* term, Env env, void delegate(Term*, int) interfunc, int depth = 0) {
-    interfunc(term, depth);
-
-    final switch (term.type) {
-        case TType.VAR:
-            if (term.a == "print") {
-                return term;
-            } else if ((term.a in env) !is null) {
-                return eval!(beta,dup)(dup(env[term.a]), env, interfunc, depth);
-            } else assert(false, "Unbound variable " ~ term.a);
-        case TType.APP:
-            if (term.t1.type == TType.ABS) {
-                term.t1.t1 = beta(term.t1.t1, term.t1.a, dup(term.t2));
-                return eval!(beta,dup)(term.t1.t1, env, interfunc, depth);
-            } else {
-                if (term.t1.type == TType.VAR && term.t1.a == "print") {
-                    writefln("[print] %s", term.t2.toString);
-                    return eval!(beta,dup)(term.t2, env, interfunc, depth-1);
-                }
-                term.t1 = eval!(beta,dup)(term.t1, env, interfunc, depth+1);
-                term.t2 = eval!(beta,dup)(term.t2, env, interfunc, depth+1);
-                return eval!(beta,dup)(term, env, interfunc, depth);
-            }
-        case TType.ABS:
-            return term;
-    }
 }
