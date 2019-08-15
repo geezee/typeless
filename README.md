@@ -26,3 +26,8 @@ You can build the interpreter with `dub build`.
 You can launch the interpreter with `dub run`, and you can interpret a file with
 `dub run - stdlib.lc`.
 Or you can use the built binary: `./typeless` and `./typeless stdlib.c` respectively.
+
+### License
+
+This work is licensed under the GPLv3 license. Make sure to read the `COPYING` file at the root of
+the project

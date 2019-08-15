@@ -1,3 +1,21 @@
+/*
+Copyright 2019 - George Zakhour
+
+This file is part of typeless.git
+
+typeless.git is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+typeless.git is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with typeless.git. If not, see <https://www.gnu.org/licenses/>.
+*/
 import std.stdio;
 import std.string : strip;
 import std.range : repeat;
@@ -16,7 +34,6 @@ bool debugMode = false;
 bool doEvalOpt = false;
 bool doBetaOpt = false;
 bool doDupOpt = false;
-bool useCustomStack = false;
 string source = "";
 
 Env env;
@@ -42,30 +59,14 @@ void handle(string exprs) {
                 env[tokens[0].strip] = parse(tokens[1..$].joiner("=").text);
             else if (tokens.length == 1 && tokens[0].strip.length > 0) {
                 Term* t;
-                if (useCustomStack) {
-                    auto betaStack = new Stack!(BetaData*)();
-                    auto evalStack = new Stack!(EvalData*)();
-                    auto dupStack = new Stack!(DupData*)();
-                    auto betaFun = (Term* t, string v, Term* val) { return betaOptStack(t, v, val, betaStack); };
-                    auto dupFun = (Term* t) { return dupOptStack(t, dupStack); };
-                    if (doEvalOpt) if (doBetaOpt) if (doDupOpt) t = evalOptStack!(betaFun,dupFun)(expr.parse, env, cont, 0, evalStack);
-                                                  else          t = evalOptStack!(betaFun,dup)(expr.parse, env, cont, 0, evalStack);
-                                   else           if (doDupOpt) t = evalOptStack!(beta,dupFun)(expr.parse, env, cont, 0, evalStack);
-                                                  else          t = evalOptStack!(beta,dup)(expr.parse, env, cont, 0, evalStack);
-                    else           if (doBetaOpt) if (doDupOpt) t = eval!(betaFun, dupFun)(expr.parse, env, cont);
-                                                  else          t = eval!(betaFun,dup)(expr.parse, env, cont);
-                                   else           if (doDupOpt) t = eval!(beta,dupFun)(expr.parse, env, cont);
-                                                  else          t = eval!(beta,dup)(expr.parse, env, cont);
-                } else {
-                    if (doEvalOpt) if (doBetaOpt) if (doDupOpt) t = evalOpt!(betaOpt,dupOpt)(expr.parse, env, cont);
-                                                  else          t = evalOpt!(betaOpt,dup)(expr.parse, env, cont);
-                                   else           if (doDupOpt) t = evalOpt!(beta,dupOpt)(expr.parse, env, cont);
-                                                  else          t = evalOpt!(beta,dup)(expr.parse, env, cont);
-                    else           if (doBetaOpt) if (doDupOpt) t = eval!(betaOpt, dupOpt)(expr.parse, env, cont);
-                                                  else          t = eval!(betaOpt,dup)(expr.parse, env, cont);
-                                   else           if (doDupOpt) t = eval!(beta,dupOpt)(expr.parse, env, cont);
-                                                  else          t = eval!(beta,dup)(expr.parse, env, cont);
-                }
+                if (doEvalOpt) if (doBetaOpt) if (doDupOpt) t = evalOpt!(betaOpt,dupOpt)(expr.parse, env, cont, 0);
+                                              else          t = evalOpt!(betaOpt,dup)(expr.parse, env, cont, 0);
+                               else           if (doDupOpt) t = evalOpt!(beta,dupOpt)(expr.parse, env, cont, 0);
+                                              else          t = evalOpt!(beta,dup)(expr.parse, env, cont, 0);
+                else           if (doBetaOpt) if (doDupOpt) t = eval!(betaOpt, dupOpt)(expr.parse, env, cont);
+                                              else          t = eval!(betaOpt,dup)(expr.parse, env, cont);
+                               else           if (doDupOpt) t = eval!(beta,dupOpt)(expr.parse, env, cont);
+                                              else          t = eval!(beta,dup)(expr.parse, env, cont);
                 writeln(t.toString);
                 writefln("\t%d reductions", evalCount);
                 evalCount = 0;
@@ -82,7 +83,6 @@ void main(string[] args) {
         "e", &doEvalOpt,
         "b", &doBetaOpt,
         "d", &doDupOpt,
-        "s", &useCustomStack
     );
     if (args.length > 1) source = args[1];
 
