@@ -29,11 +29,13 @@ import lambdacalc;
 import dups;
 import betas;
 import evals;
+import partial_eval;
 
 bool debugMode = false;
 bool doEvalOpt = false;
 bool doBetaOpt = false;
 bool doDupOpt = false;
+bool doPartial = false;
 bool openRepl = false;
 string source = "";
 
@@ -60,14 +62,17 @@ void handle(string exprs) {
                 env[tokens[0].strip] = parse(tokens[1..$].joiner("=").text);
             else if (tokens.length == 1 && tokens[0].strip.length > 0) {
                 Term* t;
-                if (doEvalOpt) if (doBetaOpt) if (doDupOpt) t = evalOpt!(betaOpt,dupOpt)(expr.parse, env, cont, 0);
-                                              else          t = evalOpt!(betaOpt,dup)(expr.parse, env, cont, 0);
-                               else           if (doDupOpt) t = evalOpt!(beta,dupOpt)(expr.parse, env, cont, 0);
-                                              else          t = evalOpt!(beta,dup)(expr.parse, env, cont, 0);
-                else           if (doBetaOpt) if (doDupOpt) t = eval!(betaOpt, dupOpt)(expr.parse, env, cont);
-                                              else          t = eval!(betaOpt,dup)(expr.parse, env, cont);
-                               else           if (doDupOpt) t = eval!(beta,dupOpt)(expr.parse, env, cont);
-                                              else          t = eval!(beta,dup)(expr.parse, env, cont);
+                if (doPartial) t = partialEval!(betaOpt,dup)(expr.parse, env, cont, 0).unalpha;
+                else {
+                    if (doEvalOpt) if (doBetaOpt) if (doDupOpt) t = evalOpt!(betaOpt,dupOpt)(expr.parse, env, cont, 0);
+                                                  else          t = evalOpt!(betaOpt,dup)(expr.parse, env, cont, 0);
+                                   else           if (doDupOpt) t = evalOpt!(beta,dupOpt)(expr.parse, env, cont, 0);
+                                                  else          t = evalOpt!(beta,dup)(expr.parse, env, cont, 0);
+                    else           if (doBetaOpt) if (doDupOpt) t = eval!(betaOpt, dupOpt)(expr.parse, env, cont);
+                                                  else          t = eval!(betaOpt,dup)(expr.parse, env, cont);
+                                   else           if (doDupOpt) t = eval!(beta,dupOpt)(expr.parse, env, cont);
+                                                  else          t = eval!(beta,dup)(expr.parse, env, cont);
+                }
                 writeln(t.toString);
                 writefln("\t%d reductions", evalCount);
                 evalCount = 0;
@@ -84,6 +89,7 @@ void main(string[] args) {
         "e", &doEvalOpt,
         "b", &doBetaOpt,
         "d", &doDupOpt,
+        "p", &doPartial,
         "r", &openRepl
     );
     if (args.length > 1) source = args[1];

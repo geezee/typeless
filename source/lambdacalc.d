@@ -84,3 +84,47 @@ Term* parse(string s) {
     assert (stack.length == 1, "unbalanced parans");
     return stack[0];
 }
+
+
+// used for alpha reduction
+ulong counter = 0;
+
+// invariant: variable at nameHistory[index] was replaced with _?index
+string[] nameHistory = [];
+
+Term* alpha(alias beta)(Term* term)
+in {
+    assert(term.type == TType.ABS);
+}
+body {
+    import std.conv : to;
+    string varName = "_?" ~ counter.to!string;
+    term.t1 = beta(term.t1, term.a, new Term(TType.VAR, varName));
+    nameHistory ~= term.a;
+    term.a = varName;
+    counter++;
+    return term;
+}
+
+// replace all _?index variables by their original name (may introduce confusion)
+Term* unalpha(Term* term) {
+    import std.conv : to;
+    import std.string : isNumeric;
+    final switch (term.type) {
+        case TType.VAR:
+            while (term.a.length > 2 && term.a[0..2] == "_?" && term.a[2..$].isNumeric) {
+                term.a = nameHistory[term.a[2..$].to!size_t];
+            }
+            return term;
+        case TType.ABS:
+            while (term.a.length > 2 && term.a[0..2] == "_?" && term.a[2..$].isNumeric) {
+                term.a = nameHistory[term.a[2..$].to!size_t];
+            }
+            term.t1 = unalpha(term.t1);
+            return term;
+        case TType.APP:
+            term.t1 = unalpha(term.t1);
+            term.t2 = unalpha(term.t2);
+            return term;
+    }
+}

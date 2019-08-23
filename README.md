@@ -32,13 +32,15 @@ Or you can use the built binary: `./typeless` and `./typeless stdlib.c` respecti
 The synopsis is
 
 ```
-typeless [--debug] [-e] [-b] [-d] [-r] [FILE]
+typeless [--debug] [-e] [-b] [-d] [-r] [-p] [FILE]
 
 OPTIONS
     -e          use the optimized (iterative) version of the evaluator
     -b          use the optimized (iterative) beta reduction
     -d          use the optimized (iterative) term duplication function
     -r          always start the REPL regardless of the contents of FILE
+    -p          use the partial evaluator instead of the evaluator (recursive)
+                renders -e -b -d useless, will always use optimized beta and recursive dup
     --debug     print every step of the evaluation
     FILE        Optional. The file to interpret.
                 If the file contains a main function then this function is called.
@@ -47,6 +49,7 @@ OPTIONS
 
 EXAMPLE
     ./typeless -b stdlib.lc
+    ./typeless -p <(cat stdlib.lc; echo "; main = rec-pow 5;")
 ```
 
 ### License
