@@ -110,4 +110,8 @@ fib-y = lambda self (lambda n
 
 fibonacci = (Y fib-y);
 
-main = ((fibonacci (add 10 8)) id zero);
+rec-pow = lambda n (lambda x
+    ((if (zero? n)
+         (lambda _ 1)
+         (lambda _ (mult x (rec-pow (pred n) x))))
+     id));

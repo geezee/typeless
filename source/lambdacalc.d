@@ -35,6 +35,8 @@ struct Term {
 
 alias Env = Term*[string];
 
+alias DFunc = void delegate(Term*, int);
+
 
 string toString(Term* t) {
     if (t == null) return ".";

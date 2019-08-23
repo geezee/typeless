@@ -34,6 +34,7 @@ bool debugMode = false;
 bool doEvalOpt = false;
 bool doBetaOpt = false;
 bool doDupOpt = false;
+bool openRepl = false;
 string source = "";
 
 Env env;
@@ -83,13 +84,18 @@ void main(string[] args) {
         "e", &doEvalOpt,
         "b", &doBetaOpt,
         "d", &doDupOpt,
+        "r", &openRepl
     );
     if (args.length > 1) source = args[1];
 
 
     if (source.length > 0) {
-        handle(source.readText ~ "; main");
-    } else {
+        handle(source.readText);
+        if (("main" in env) !is null) {
+            handle("main");
+        }
+    }
+    if (source.length == 0 || openRepl || ("main" in env) is null) {
         string exprs = "";
         do {
             writef("\r%s> ", exprs.length == 0 ? "" : ">");

@@ -27,6 +27,28 @@ You can launch the interpreter with `dub run`, and you can interpret a file with
 `dub run - stdlib.lc`.
 Or you can use the built binary: `./typeless` and `./typeless stdlib.c` respectively.
 
+### Usage
+
+The synopsis is
+
+```
+typeless [--debug] [-e] [-b] [-d] [-r] [FILE]
+
+OPTIONS
+    -e          use the optimized (iterative) version of the evaluator
+    -b          use the optimized (iterative) beta reduction
+    -d          use the optimized (iterative) term duplication function
+    -r          always start the REPL regardless of the contents of FILE
+    --debug     print every step of the evaluation
+    FILE        Optional. The file to interpret.
+                If the file contains a main function then this function is called.
+                If the file doesn't contain a main function then the REPL is opened.
+                If no file was provided the REPL is also opened.
+
+EXAMPLE
+    ./typeless -b stdlib.lc
+```
+
 ### License
 
 This work is licensed under the GPLv3 license. Make sure to read the `COPYING` file at the root of

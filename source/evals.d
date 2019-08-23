@@ -23,11 +23,10 @@ import std.stdio : writefln;
 import lambdacalc;
 
 
-
 // Original recursive function
 // the two template parameters `beta` and `dup` are the beta/dup functions to use
 Term* eval(alias beta, alias dup)
-          (Term* term, Env env, void delegate(Term*, int) interfunc, int depth = 0) {
+          (Term* term, Env env, DFunc interfunc, int depth = 0) {
     interfunc(term, depth);
 
     final switch (term.type) {
@@ -36,7 +35,10 @@ Term* eval(alias beta, alias dup)
                 return term;
             } else if ((term.a in env) !is null) {
                 return eval!(beta,dup)(dup(env[term.a]), env, interfunc, depth);
-            } else assert(false, "Unbound variable " ~ term.a);
+            } else {
+                writefln("variable %s is unbound", term.a);
+                assert(false, "Unbound variable " ~ term.a);
+            }
         case TType.APP:
             if (term.t1.type == TType.ABS) {
                 term.t1.t1 = beta(term.t1.t1, term.t1.a, dup(term.t2));
@@ -60,7 +62,7 @@ Term* eval(alias beta, alias dup)
 // recursive version rewritten in continuation-passing style
 // the two template parameters `beta` and `dup` are the beta/dup functions to use
 Term* evalCPS(alias beta, alias dup)
-             (Term* term, Env env, void delegate(Term*, int) interfunc, int depth = 0,
+             (Term* term, Env env, DFunc interfunc, int depth = 0,
               Term* delegate(Term*) cont = (Term* t) { return t; }) { // default continuation: do nothing
     interfunc(term, depth);
 
@@ -105,7 +107,7 @@ struct EvalCont {
 // the special apply function needed for defunctionalization
 // the two template parameters `beta` and `dup` are the beta/dup functions to use
 Term* applyEval(alias beta, alias dup)
-               (Term* ans, Env env, void delegate(Term*, int) interfunc, EvalCont* cont) {
+               (Term* ans, Env env, DFunc interfunc, EvalCont* cont) {
     if (cont == null) return ans;
     if (cont.inner) {
         cont.term.t2 = ans;
@@ -120,7 +122,7 @@ Term* applyEval(alias beta, alias dup)
 // the defunctionalized version of eval
 // the two template parameters `beta` and `dup` are the beta/dup functions to use
 Term* evalDefun(alias beta, alias dup)
-               (Term* term, Env env, void delegate(Term*, int) interfunc, int depth = 0, EvalCont* cont = null) {
+               (Term* term, Env env, DFunc interfunc, int depth = 0, EvalCont* cont = null) {
     interfunc(term, depth);
     if (term.type == TType.VAR) {
         if (term.a == "print")
@@ -146,7 +148,7 @@ Term* evalDefun(alias beta, alias dup)
 // After performing inlining and tail-call optimization on evalDefun and applyEval
 // the two template parameters `beta` and `dup` are the beta/dup functions to use
 Term* evalOpt(alias beta, alias dup)
-             (Term* term, Env env, void delegate(Term*, int) interfunc, int depth = 0, EvalCont* cont = null) {
+             (Term* term, Env env, DFunc interfunc, int depth = 0, EvalCont* cont = null) {
     Term* ans;
     EvalCont* acont;
     do {
