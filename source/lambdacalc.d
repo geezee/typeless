@@ -22,7 +22,12 @@ import std.ascii : isWhite;
 import std.array : replace, split;
 
 
-enum TType { VAR, APP, ABS };
+enum TType {
+    VAR,
+    APP,
+    ABS,
+    QUOTE
+};
 
 
 struct Term {
@@ -40,15 +45,17 @@ alias DFunc = void delegate(Term*, int);
 
 string toString(Term* t) {
     if (t == null) return ".";
-    if (t.type == TType.VAR) return t.a;
-    if (t.type == TType.ABS) return "^" ~ t.a ~ "." ~ t.t1.toString;
-    if (t.type == TType.APP) return "(" ~ t.t1.toString ~ " " ~ t.t2.toString ~ ")";
-    return "";
+    final switch(t.type) {
+        case TType.VAR: return t.a;
+        case TType.ABS: return "^" ~ t.a ~ "." ~ t.t1.toString;
+        case TType.APP: return "(" ~ t.t1.toString ~ " " ~ t.t2.toString ~ ")";
+        case TType.QUOTE: return "'" ~ t.a;
+    }
 }
 
 
 Term* parse(string s) {
-    string[] tokens = s.replace("(", " ( ").replace(")", " ) ").replace("'", " ' ").split!isWhite;
+    string[] tokens = s.replace("(", " ( ").replace(")", " ) ").split!isWhite;
     Term*[] stack = [];
 
     void fillStackHole() {
@@ -62,6 +69,8 @@ Term* parse(string s) {
                 goto case;
             case TType.ABS:
                 if (parent.t1 == null) { parent.t1 = front; break; }
+                goto case;
+            case TType.QUOTE:
                 goto case;
             case TType.VAR:
                 stack[$-2] = new Term(TType.APP, null, parent, front);
@@ -77,8 +86,13 @@ Term* parse(string s) {
         } else if (token == "lambda")  {
             stack ~= new Term(TType.ABS, tokens[i+1]);
             i++; // skip the var
-        } else if (token == ")") fillStackHole();
-        else { stack ~= new Term(TType.VAR, token); fillStackHole(); }
+        } else if (token == ")")
+            fillStackHole();
+        else {
+            if (token[0] == '\'') stack ~= new Term(TType.QUOTE, token[1..$]);
+            else stack ~= new Term(TType.VAR, token);
+            fillStackHole();
+        }
     }
 
     assert (stack.length == 1, "unbalanced parans");
@@ -96,6 +110,7 @@ Term* alpha(alias beta, alias dup)(Term* term) {
     import std.conv : to;
 
     final switch(term.type) {
+        case TType.QUOTE: break;
         case TType.VAR: break;
         case TType.APP:
             term.t1 = alpha!(beta,dup)(term.t1);
@@ -133,6 +148,8 @@ Term* unalpha(Term* term) {
         case TType.APP:
             term.t1 = unalpha(term.t1);
             term.t2 = unalpha(term.t2);
+            return term;
+        case TType.QUOTE:
             return term;
     }
 }

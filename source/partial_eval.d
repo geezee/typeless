@@ -90,5 +90,6 @@ Term* partialEval(alias beta, alias dup)(Term* term, ref Env env, DFunc interfun
         case TType.VAR: return partialEvalVar(term, env);
         case TType.ABS: return partialEvalAbs(term, env);
         case TType.APP: return partialEvalApp(term, env);
+        case TType.QUOTE: return term;
     }
 }

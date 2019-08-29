@@ -36,6 +36,8 @@ Term* beta(alias dup)(Term* term, string var, Term* val) {
             term.t1 = beta!dup(term.t1, var, val);
             term.t2 = beta!dup(term.t2, var, val);
             return term;
+        case TType.QUOTE:
+            return term;
     }
 }
 
@@ -61,6 +63,8 @@ Term* betaCPS(alias dup)(Term* term, string var, Term* val, Term* delegate(Term*
                     return cont(term);
                 });
             });
+        case TType.QUOTE:
+            return term;
     }
 }
 
@@ -112,6 +116,8 @@ Term* betaDefun(alias dup)(Term* term, string var, Term* val, BetaCont* cont = n
             else return betaDefun!dup(term.t1, var, val, new BetaCont(TType.ABS, 0, term, cont));
         case TType.APP:
             return betaDefun!dup(term.t1, var, val, new BetaCont(TType.APP, 1, term, cont));
+        case TType.QUOTE:
+            return applyBeta!dup(term, var, val, cont);
     }
 }
 
@@ -136,9 +142,12 @@ Term* betaOpt(alias dup)(Term* term, string var, Term* val, BetaCont* cont = nul
                 cont = new BetaCont(TType.ABS, 0, term, cont);
                 term = term.t1;
             }
-        } else {
+        } else if (term.type == TType.APP) {
             cont = new BetaCont(TType.APP, 1, term, cont);
             term = term.t1;
+        } else if (term.type == TType.QUOTE) {
+            computeAns = true;
+            ans = term; acont = cont;
         }
         if (computeAns) {
             while(true) {

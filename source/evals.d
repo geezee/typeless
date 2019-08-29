@@ -54,6 +54,8 @@ Term* eval(alias beta, alias dup)
             }
         case TType.ABS:
             return term;
+        case TType.QUOTE:
+            return term;
     }
 }
 
