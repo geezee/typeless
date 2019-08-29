@@ -92,17 +92,25 @@ ulong counter = 0;
 // invariant: variable at nameHistory[index] was replaced with _?index
 string[] nameHistory = [];
 
-Term* alpha(alias beta)(Term* term)
-in {
-    assert(term.type == TType.ABS);
-}
-body {
+Term* alpha(alias beta, alias dup)(Term* term) {
     import std.conv : to;
-    string varName = "_?" ~ counter.to!string;
-    term.t1 = beta(term.t1, term.a, new Term(TType.VAR, varName));
-    nameHistory ~= term.a;
-    term.a = varName;
-    counter++;
+
+    final switch(term.type) {
+        case TType.VAR: break;
+        case TType.APP:
+            term.t1 = alpha!(beta,dup)(term.t1);
+            term.t2 = alpha!(beta,dup)(term.t2);
+            break;
+        case TType.ABS:
+            string varName = "_?" ~ counter.to!string;
+            term.t1 = beta!dup(term.t1, term.a, new Term(TType.VAR, varName));
+            nameHistory ~= term.a;
+            term.a = varName;
+            counter++;
+            term.t1 = alpha!(beta,dup)(term.t1);
+            break;
+    }
+
     return term;
 }
 

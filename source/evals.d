@@ -41,7 +41,7 @@ Term* eval(alias beta, alias dup)
             }
         case TType.APP:
             if (term.t1.type == TType.ABS) {
-                term.t1.t1 = beta(term.t1.t1, term.t1.a, dup(term.t2));
+                term.t1.t1 = beta!dup(term.t1.t1, term.t1.a, term.t2);
                 return eval!(beta,dup)(term.t1.t1, env, interfunc, depth);
             } else {
                 if (term.t1.type == TType.VAR && term.t1.a == "print") {
@@ -163,7 +163,7 @@ Term* evalOpt(alias beta, alias dup)
             } else assert(false, "Unbounded variable " ~ term.a);
         } else if (term.type == TType.APP) {
             if (term.t1.type == TType.ABS) {
-                term.t1.t1 = beta(term.t1.t1, term.t1.a, dup(term.t2));
+                term.t1.t1 = beta!dup(term.t1.t1, term.t1.a, term.t2);
                 term = term.t1.t1;
                 depth--;
             } else if (term.t1.type == TType.VAR && term.t1.a == "print") {

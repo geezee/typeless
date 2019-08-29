@@ -33,7 +33,7 @@ Term* partialEval(alias beta, alias dup)(Term* term, ref Env env, DFunc interfun
 
     Term* partialEvalAbs(Term* term, ref Env env) {
         // Rule: ABS
-        term = alpha!beta(term);
+        term = alpha!(beta,dup)(term);
         term.t1 = partialEval!(beta,dup)(term.t1, env, interfunc, depth+1);
         return term;
     }
@@ -41,15 +41,16 @@ Term* partialEval(alias beta, alias dup)(Term* term, ref Env env, DFunc interfun
     Term* partialEvalApp(Term* term, ref Env env) {
         // Rule: APP-ABS
         if (term.t1.type == TType.ABS) {
-            term.t1 = alpha!beta(term.t1);
-            term.t1.t1 = beta(term.t1.t1, term.t1.a, dup(term.t2));
+            term.t1 = alpha!(beta,dup)(term.t1);
+            term.t1.t1 = beta!dup(term.t1.t1, term.t1.a, term.t2);
             return partialEval!(beta,dup)(term.t1.t1, env, interfunc, depth);
         }
         // Rule: APP-VAR-*
         else if (term.t1.type == TType.VAR) {
             term.t2 = partialEval!(beta,dup)(term.t2, env, interfunc, depth+1);
             // Rule: APP-VAR-3
-            if ((term.t1.a in env) is null || term.t2.type != TType.ABS) { // only ABS are values
+            if ((term.t1.a in env) is null
+                    || (term.t2.type != TType.ABS && term.t2.type != TType.VAR)) {
                 return term;
             }
             // Rule: APP-VAR-2
@@ -59,10 +60,15 @@ Term* partialEval(alias beta, alias dup)(Term* term, ref Env env, DFunc interfun
             }
             // Rule: APP-VAR-1
             else {
-                string newname = "[" ~ term.t1.a ~ "_" ~ term.t2.toString ~ "]";
-                Term* bdy = alpha!beta(dup(env[term.t1.a]));
-                env[newname] = partialEval!(beta,dup)(new Term(TType.APP, null, bdy, term.t2), env, interfunc, depth+1);
-                return partialEval!(beta,dup)(new Term(TType.VAR, newname), env, interfunc, depth);
+                Term* bdy = alpha!(beta,dup)(dup(env[term.t1.a])); // bdy is ABS
+                if (term.t2.type == TType.ABS)  {
+                    string newname = "[" ~ term.t1.a ~ "_" ~ term.t2.toString ~ "]";
+                    env[newname] = partialEval!(beta,dup)(new Term(TType.APP, null, bdy, term.t2), env, interfunc, depth+1);
+                    return partialEval!(beta,dup)(new Term(TType.VAR, newname), env, interfunc, depth);
+                } else if (term.t2.type == TType.VAR) {
+                    bdy.t1 = beta!dup(bdy.t1, bdy.a, term.t2);
+                    return partialEval!(beta,dup)(bdy.t1, env, interfunc, depth);
+                } else assert(false);
             }
         } else {
             Term* pt1 = term.t1;

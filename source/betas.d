@@ -23,18 +23,18 @@ import lambdacalc;
 
 
 // Original recursive function
-Term* beta(Term* term, string var, Term* val) {
+Term* beta(alias dup)(Term* term, string var, Term* val) {
     if (term == null) return term;
     final switch (term.type) {
         case TType.VAR:
-            return term.a == var ? val : term;
+            return term.a == var ? dup(val) : term;
         case TType.ABS:
             if (term.a == var) return term;
-            term.t1 = beta(term.t1, var, val);
+            term.t1 = beta!dup(term.t1, var, val);
             return term;
         case TType.APP:
-            term.t1 = beta(term.t1, var, val);
-            term.t2 = beta(term.t2, var, val);
+            term.t1 = beta!dup(term.t1, var, val);
+            term.t2 = beta!dup(term.t2, var, val);
             return term;
     }
 }
@@ -42,21 +42,21 @@ Term* beta(Term* term, string var, Term* val) {
 
 
 // recursive version rewritten in continuation-passing style
-Term* betaCPS(Term* term, string var, Term* val, Term* delegate(Term*) cont = (Term* t) { return t; }) {
+Term* betaCPS(alias dup)(Term* term, string var, Term* val, Term* delegate(Term*) cont = (Term* t) { return t; }) {
     if (term == null) return term;
     final switch (term.type) {
         case TType.VAR:
-            return cont(term.a == var ? val : term);
+            return cont(term.a == var ? dup(val) : term);
         case TType.ABS:
             if (term.a == var) return cont(term);
-            return betaCPS(term.t1, var, val, (Term* ans) {
+            return betaCPS!dup(term.t1, var, val, (Term* ans) {
                 term.t1 = ans;
                 return cont(term);
             });
         case TType.APP:
-            return betaCPS(term.t1, var, val, (Term* ans1) {
+            return betaCPS!dup(term.t1, var, val, (Term* ans1) {
                 term.t1 = ans1;
-                return betaCPS(term.t2, var, val, (Term* ans2) {
+                return betaCPS!dup(term.t2, var, val, (Term* ans2) {
                     term.t2 = ans2;
                     return cont(term);
                 });
@@ -76,7 +76,7 @@ struct BetaCont {
 
 // the special apply function needed for defunctionalization
 // var, val in here because they never change
-Term* applyBeta(Term* ans, string var, Term* val, BetaCont* cont) {
+Term* applyBeta(alias dup)(Term* ans, string var, Term* val, BetaCont* cont) {
     while(true) {
         if (cont == null) return ans;
         switch (cont.type) {
@@ -88,7 +88,7 @@ Term* applyBeta(Term* ans, string var, Term* val, BetaCont* cont) {
             case TType.APP:
                 if (cont.argNum == 1) {
                     cont.term.t1 = ans;
-                    return betaDefun(cont.term.t2, var, val, new BetaCont(cont.type, 2, cont.term, cont.next));
+                    return betaDefun!dup(cont.term.t2, var, val, new BetaCont(cont.type, 2, cont.term, cont.next));
                 } else {
                     cont.term.t2 = ans;
                     ans = cont.term;
@@ -102,22 +102,22 @@ Term* applyBeta(Term* ans, string var, Term* val, BetaCont* cont) {
 }
 
 // the defunctionalized version of beta
-Term* betaDefun(Term* term, string var, Term* val, BetaCont* cont = null) {
-    if (term == null) return applyBeta(term, var, val, cont);
+Term* betaDefun(alias dup)(Term* term, string var, Term* val, BetaCont* cont = null) {
+    if (term == null) return applyBeta!dup(term, var, val, cont);
     final switch (term.type) {
         case TType.VAR:
-            return applyBeta(term.a == var ? val : term, var, val, cont);
+            return applyBeta!dup(term.a == var ? dup(val) : term, var, val, cont);
         case TType.ABS:
-            if (term.a == var) return applyBeta(term, var, val, cont);
-            else return betaDefun(term.t1, var, val, new BetaCont(TType.ABS, 0, term, cont));
+            if (term.a == var) return applyBeta!dup(term, var, val, cont);
+            else return betaDefun!dup(term.t1, var, val, new BetaCont(TType.ABS, 0, term, cont));
         case TType.APP:
-            return betaDefun(term.t1, var, val, new BetaCont(TType.APP, 1, term, cont));
+            return betaDefun!dup(term.t1, var, val, new BetaCont(TType.APP, 1, term, cont));
     }
 }
 
 
 // After performing inlining and tail-call optimization on betaDefun and applyBeta
-Term* betaOpt(Term* term, string var, Term* val, BetaCont* cont = null) {
+Term* betaOpt(alias dup)(Term* term, string var, Term* val, BetaCont* cont = null) {
     Term* ans;
     BetaCont* acont;
     do {
@@ -127,7 +127,7 @@ Term* betaOpt(Term* term, string var, Term* val, BetaCont* cont = null) {
             ans = term; acont = cont;
         } else if (term.type == TType.VAR) {
             computeAns = true;
-            ans = term.a == var ? val : term; acont = cont;
+            ans = term.a == var ? dup(val) : term; acont = cont;
         } else if (term.type == TType.ABS) {
             if (term.a == var) {
                 computeAns = true;

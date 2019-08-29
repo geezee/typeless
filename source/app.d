@@ -45,7 +45,7 @@ void handle(string exprs) {
     ulong evalCount = 0;
 
     void delegate(Term*,int) debugCont = (Term* step, int depth) {
-        writefln("  >%s %s", ">".repeat(depth).joiner(""), toString(step));
+        writefln("  >%s %s", ">".repeat(depth).joiner(""), toString(step.unalpha));
         evalCount++;
     };
     void delegate(Term*,int) normalCont = (Term* step, int depth) {

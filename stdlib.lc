@@ -18,7 +18,7 @@ apply-second = lambda f (lambda p (pair (left p) (f (right p))));
 apply-if-else = lambda f (lambda g (lambda p (if (left p) (f p) (g p))));
 
 zero = lambda S (lambda z z);
-succ = lambda n (lambda S (lambda z (n S (S z))));
+succ = lambda n (lambda S (lambda z (S (n S z))));
 zero? = lambda b (b (const false) true);
 add = lambda n (lambda m (lambda S (lambda z (n S (m S z)))));
 mult = lambda n (lambda m (lambda S (lambda z (m (n S) z))));
@@ -110,8 +110,8 @@ fib-y = lambda self (lambda n
 
 fibonacci = (Y fib-y);
 
-rec-pow = lambda n (lambda x
+pow = lambda n (lambda x
     ((if (zero? n)
          (lambda _ 1)
-         (lambda _ (mult x (rec-pow (pred n) x))))
+         (lambda _ (mult x (pow (pred n) x))))
      id));
