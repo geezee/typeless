@@ -23,6 +23,7 @@ import std.file : readText;
 import std.conv : text;
 import std.algorithm.iteration : joiner;
 import std.algorithm.searching : count;
+import std.algorithm.comparison : max;
 import std.getopt;
 
 import lambdacalc;
@@ -45,7 +46,8 @@ void handle(string exprs) {
     ulong evalCount = 0;
 
     void delegate(Term*,int) debugCont = (Term* step, int depth) {
-        writefln("  >%s %s", ">".repeat(depth).joiner(""), toString(step.unalpha));
+        if (depth < 0) writefln("[UNSTABLE] depth is negative");
+        writefln("  >%s %s", ">".repeat(max(0, depth)).joiner(""), toString(step.unalpha));
         evalCount++;
     };
     void delegate(Term*,int) normalCont = (Term* step, int depth) {
