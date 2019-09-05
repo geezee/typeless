@@ -20,6 +20,12 @@ module partial_eval;
 
 import lambdacalc;
 
+
+bool isValue(Term* t) {
+    return t.type == TType.ABS || t.type == TType.VAR || t.type == TType.QUOTE;
+}
+
+
 Term* partialEval(alias beta, alias dup)(Term* term, ref Env env, DFunc interfunc, int depth) {
     import std.stdio : writefln;
 
@@ -49,13 +55,12 @@ Term* partialEval(alias beta, alias dup)(Term* term, ref Env env, DFunc interfun
         else if (term.t1.type == TType.VAR) {
             term.t2 = partialEval!(beta,dup)(term.t2, env, interfunc, depth+1);
             // Rule: APP-VAR-3
-            if ((term.t1.a in env) is null
-                    || (term.t2.type != TType.ABS && term.t2.type != TType.VAR)) {
+            if ((term.t1.a in env) is null || !term.t2.isValue) {
                 return term;
             }
             // Rule: APP-VAR-2
             else if (env[term.t1.a].type != TType.ABS) { // e' not a value
-                term.t1 = dup(env[term.t1.a]);
+                if (term.t1.type == TType.VAR) term.t1 = dup(env[term.t1.a]);
                 return partialEval!(beta,dup)(term, env, interfunc, depth);
             }
             // Rule: APP-VAR-1
@@ -65,20 +70,30 @@ Term* partialEval(alias beta, alias dup)(Term* term, ref Env env, DFunc interfun
                     string newname = "[" ~ term.t1.a ~ "_" ~ term.t2.toString ~ "]";
                     env[newname] = partialEval!(beta,dup)(new Term(TType.APP, null, bdy, term.t2), env, interfunc, depth+1);
                     return partialEval!(beta,dup)(new Term(TType.VAR, newname), env, interfunc, depth);
-                } else if (term.t2.type == TType.VAR) {
+                } else {
                     bdy.t1 = beta!dup(bdy.t1, bdy.a, term.t2);
                     return partialEval!(beta,dup)(bdy.t1, env, interfunc, depth);
-                } else assert(false);
+                }
             }
         } else {
             Term* pt1 = term.t1;
             Term* pt2 = term.t2;
             term.t1 = partialEval!(beta,dup)(term.t1, env, interfunc, depth+1);
-            if (pt1 !is term.t1) {
+
+            // Special cases here
+            if (term.t1.type == TType.APP
+                    && term.t1.t1.type == TType.VAR && term.t1.t1.a == "qeq?"
+                    && term.t1.t2.type == TType.QUOTE && term.t2.type == TType.QUOTE) {
+                if (term.t1.t2.a == term.t2.a) return parse("lambda t (lambda f t)");
+                else                           return parse("lambda t (lambda f f)");
+            }
+
+            else if (pt1 !is term.t1) {
                 return partialEval!(beta,dup)(term, env, interfunc, depth);
             } else {
                 interfunc(term, depth);
                 term.t2 = partialEval!(beta,dup)(term.t2, env, interfunc, depth+1);
+
                 if (pt2 is term.t2) return term;
                 else return partialEval!(beta,dup)(term, env, interfunc, depth);
             }
